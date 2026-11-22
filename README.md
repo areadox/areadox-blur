@@ -35,6 +35,10 @@ berechnet, damit die Leistung konstant bleibt.
 
 Die fertigen Pakete baut die GitHub-CI (Reiter *Actions* bzw. *Releases*).
 
+**Windows:** `areadox-blur-<version>-windows-x64-installer.exe` ausführen (Admin-Rechte nötig) –
+der Installer legt das Plugin im OBS-33-Pfad ab und lässt sich über *Apps & Features*
+wieder entfernen. Alternativ das ZIP manuell entpacken:
+
 | System | Zielordner |
 |---|---|
 | Windows | `C:\ProgramData\obs-studio\plugins\areadox-blur\` (enthält `areadox-blur.dll` und `data\`) |
@@ -53,6 +57,7 @@ Linux/macOS löst OBS die Symbole beim Laden auf.
 # Windows (PowerShell)
 .\scripts\package.ps1            # -> dist\areadox-blur-<version>-windows-x64.zip
 .\scripts\package.ps1 -Install   # zusätzlich installieren (Admin-PowerShell)
+iscc /DAppVersion=0.1.0 installer\areadox-blur.iss   # Installer (Inno Setup 6)
 ```
 
 ```bash
@@ -82,6 +87,7 @@ src/render.rs     GPU-Pipeline (Erfassen → Hintergrund → Blur → Tilt/Maske
 core/             OBS-unabhängige Logik mit Unit-Tests (Planung, Geometrie, Kalibrierung)
 data/effects/     Shader im OBS-Effect-Format (OBS übersetzt sie für Direct3D 11 und OpenGL)
 data/locale/      de-DE / en-US
+installer/        Inno-Setup-Skript für den Windows-Installer
 tests/harness/    Integrationstest gegen ein echtes, headless gebautes libobs
 ```
 

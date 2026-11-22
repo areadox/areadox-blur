@@ -41,10 +41,22 @@ jobs:
           $dumpbin = Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -Recurse -Filter dumpbin.exe -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match 'Hostx64\\x64' } | Select-Object -First 1
           & $dumpbin.FullName /exports dist\areadox-blur\areadox-blur.dll | Select-String obs_module
           & $dumpbin.FullName /imports dist\areadox-blur\areadox-blur.dll | Select-String -Pattern 'obs.dll' -Context 0,3
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+          }
+          $version = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          & $iscc "/DAppVersion=$version" "/DSourceDir=..\dist\areadox-blur" installer\areadox-blur.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
       - uses: actions/upload-artifact@v4
         with:
           name: areadox-blur-windows-x64
-          path: dist/*.zip
+          path: |
+            dist/*.zip
+            dist/*-installer.exe
 
   linux:
     name: Linux x86_64
