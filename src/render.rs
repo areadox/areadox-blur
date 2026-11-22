@@ -49,6 +49,10 @@ pub struct Renderer {
     blur: Option<Effect>,
     mix: Option<Effect>,
     targets: HashMap<Slot, TexRender>,
+    /// Frame counter and the frame each target was last used in (unused
+    /// targets are freed after a while, e.g. when the background is removed).
+    frame: u64,
+    last_used: HashMap<Slot, u64>,
     mask_image: Option<(String, Tex)>,
     /// Final texture of the current frame (premultiplied) and its size.
     output: Option<(Tex, u32, u32)>,
@@ -84,12 +88,15 @@ impl Renderer {
             blur,
             mix,
             targets: HashMap::new(),
+            frame: 0,
+            last_used: HashMap::new(),
             mask_image: None,
             output: None,
         }
     }
 
     fn target(&mut self, slot: Slot, fmt: gs_color_format) -> &mut TexRender {
+        self.last_used.insert(slot, self.frame);
         let recreate = self.targets.get(&slot).map_or(true, |t| t.format() != fmt);
         if recreate {
             self.targets.insert(slot, TexRender::new(fmt));
@@ -147,6 +154,22 @@ impl Renderer {
         rt.texture()
     }
 
+    /// Free render targets that have not been used for a while.
+    fn collect_garbage(&mut self) {
+        const KEEP_FRAMES: u64 = 120;
+        let frame = self.frame;
+        let last_used = &mut self.last_used;
+        self.targets.retain(|slot, _| {
+            let keep = last_used
+                .get(slot)
+                .is_some_and(|&f| frame - f <= KEEP_FRAMES);
+            if !keep {
+                last_used.remove(slot);
+            }
+            keep
+        });
+    }
+
     /// Re-draw the already computed output of this frame.
     pub fn draw_cached(&mut self) -> bool {
         self.draw_output()
@@ -191,6 +214,10 @@ impl Renderer {
         mask_src: Option<&StrongSource>,
     ) -> bool {
         self.output = None;
+        self.frame += 1;
+        if self.frame % 60 == 0 {
+            self.collect_garbage();
+        }
         unsafe {
             let target = obs_filter_get_target(ctx);
             let parent = obs_filter_get_parent(ctx);
@@ -232,6 +259,7 @@ impl Renderer {
                 let rt = self.target(Slot::Input, f.fmt);
                 let _blend = BlendGuard::copy();
                 if !rt.begin(w, h, w as f32, h as f32, space) {
+                    obs_source_skip_video_filter(ctx);
                     return false;
                 }
                 obs_source_process_filter_tech_end(
@@ -263,7 +291,8 @@ impl Renderer {
             // 3. blur
             let mut result = self.blur(f, s, if glass { bg_tex } else { base });
             if result.is_null() {
-                return false;
+                // a pass failed (e.g. out of GPU memory): show the source unchanged
+                result = input;
             }
             let ty = s.algorithm.effective_type(s.blur_type);
             let mut sharp = base;
@@ -305,6 +334,9 @@ impl Renderer {
                 }
             }
 
+            if result.is_null() {
+                result = input;
+            }
             self.output = Some((result, w, h));
             self.draw_output()
         }
@@ -518,7 +550,8 @@ impl Renderer {
                 let weights = channel_weights(s.mask_channel);
                 Some(self.pass(f, Slot::Out, f.w, f.h, Fx::Mix, c"Texture", |e| {
                     common(e);
-                    e.tex(c"mask_image", tex);
+                    // mask values are meant perceptually: sample without sRGB decoding
+                    e.tex_raw(c"mask_image", tex);
                     e.v4(c"channel_weights", weights);
                     e.f(
                         c"use_luminance",

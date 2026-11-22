@@ -87,10 +87,10 @@ float4 PSZoom(VertData v_in) : TARGET
 		return sum;
 
 	float2 dir = (d / dist) / uv_size;
-	int n = int(min(ceil(len), 64.0));
+	int n = int(min(ceil(len), 128.0));
 	float step_len = len / float(n);
 	float wsum = 1.0;
-	for (int i = 1; i <= 64; i++) {
+	for (int i = 1; i <= 128; i++) {
 		if (i > n)
 			break;
 		float o = step_len * float(i);

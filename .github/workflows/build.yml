@@ -15,7 +15,7 @@ jobs:
     name: Tests & Lints
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -28,7 +28,7 @@ jobs:
     needs: check
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
@@ -51,7 +51,7 @@ jobs:
           $version = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"(.+)"' | Select-Object -First 1).Matches.Groups[1].Value
           & $iscc "/DAppVersion=$version" "/DSourceDir=..\dist\areadox-blur" installer\areadox-blur.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: areadox-blur-windows-x64
           path: |
@@ -63,10 +63,10 @@ jobs:
     needs: check
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - run: scripts/package.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: areadox-blur-linux-x86_64
           path: dist/*.tar.gz
@@ -76,12 +76,12 @@ jobs:
     needs: check
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin, x86_64-apple-darwin
       - run: scripts/package.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: areadox-blur-macos-universal
           path: dist/*.zip
@@ -92,11 +92,18 @@ jobs:
     needs: [windows, linux, macos]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - name: Release notes from CHANGELOG
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          awk -v v="$ver" '$0 ~ "^## "v" " {f=1; next} /^## / {f=0} f' CHANGELOG.md > notes.md
+          cat notes.md
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: artifacts/*
-          generate_release_notes: true
+          body_path: notes.md
+          name: Areadox Blur ${{ github.ref_name }}

@@ -221,6 +221,16 @@ impl Effect {
     }
 }
 
+impl Effect {
+    /// Bind a texture without sRGB decoding (raw stored values).
+    pub fn tex_raw(&self, name: &CStr, t: *mut gs_texture_t) {
+        let p = self.param(name);
+        if !p.is_null() {
+            unsafe { gs_effect_set_texture(p, t) }
+        }
+    }
+}
+
 impl Drop for Effect {
     fn drop(&mut self) {
         unsafe { gs_effect_destroy(self.0) }

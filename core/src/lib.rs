@@ -509,6 +509,16 @@ mod tests {
     }
 
     #[test]
+    fn manifest_version_matches_cargo() {
+        let manifest = include_str!("../../data/manifest.json");
+        let expected = format!("\"version\": \"{}\"", env!("CARGO_PKG_VERSION"));
+        assert!(
+            manifest.contains(&expected),
+            "data/manifest.json must contain {expected}"
+        );
+    }
+
+    #[test]
     fn direction_is_unit() {
         let (x, y) = direction(90.0);
         assert!(x.abs() < 1e-6 && (y - 1.0).abs() < 1e-6);

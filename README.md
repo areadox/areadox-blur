@@ -12,7 +12,7 @@ komplett in **Rust** geschrieben, ohne C-Code und ohne OBS-SDK zum Bauen.
 |---|---|
 | **Algorithmen** | Gauß, Box (1–5 Durchgänge), Dual Kawase, Verpixeln (Quadrat / Sechseck) |
 | **Typen** | Fläche, Richtung (Bewegung), Zoom (mit scharfem Zentrum), Tilt-Shift (drehbar) |
-| **Masken** | Zuschneiden, Rechteck (gedreht, abgerundete Ecken), Kreis, andere Quelle, Bilddatei – jeweils mit weicher Kante und Umkehren; Quelle/Bild per Alpha, Helligkeit oder R/G/B |
+| **Masken** | Zuschneiden, Rechteck (gedreht, abgerundete Ecken), Kreis, andere Quelle, Bilddatei – jeweils mit weicher Kante und Umkehren; Quelle/Bild per Alpha, Helligkeit oder R/G/B (wahrnehmungsgetreu: 50 % Grau = halbe Stärke) |
 | **Hintergrund** | Beliebige Quelle oder Szene hinter die Quelle legen: *gemeinsam weichzeichnen* (wie Composite Blur) oder *Milchglas* (nur der Hintergrund wird weich, die Quelle bleibt scharf) |
 
 Einheitlicher **Radius**: Bei allen Algorithmen entspricht ein Radius von *r* Pixeln
@@ -33,7 +33,7 @@ berechnet, damit die Leistung konstant bleibt.
 
 ## Installation
 
-Die fertigen Pakete baut die GitHub-CI (Reiter *Actions* bzw. *Releases*).
+Die fertigen Pakete liegen unter [Releases](https://github.com/areadox/areadox-blur/releases) (gebaut von der GitHub-CI). Änderungen stehen im [CHANGELOG](CHANGELOG.md).
 
 **Windows:** `areadox-blur-<version>-windows-x64-installer.exe` ausführen (Admin-Rechte nötig) –
 der Installer legt das Plugin im OBS-33-Pfad ab und lässt sich über *Apps & Features*

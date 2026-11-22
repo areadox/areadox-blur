@@ -11,7 +11,7 @@ set -euo pipefail
 NAME="areadox-blur"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DIST="$ROOT/dist"
-VERSION="$(grep -m1 '^version' "$ROOT/Cargo.toml" | cut -d'"' -f2)"
+VERSION="$(grep -m1 '^version = "' "$ROOT/Cargo.toml" | cut -d'"' -f2)"
 INSTALL=0
 [[ "${1:-}" == "--install" ]] && INSTALL=1
 
