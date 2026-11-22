@@ -1,0 +1,16 @@
+{
+    "display_name": "Areadox Blur",
+    "id": "0b6f17b0-3321-4ade-a81d-1ae12dd80442",
+    "version": "0.1.0",
+    "authors": ["areadox"],
+    "name": "areadox-blur",
+    "description": "Composite-Blur-style blur filter for OBS, written in Rust.",
+    "long_description": "Gaussian, Box, Dual Kawase and Pixelate blur (area, directional, zoom, tilt-shift) with crop/rectangle/circle/source/image masks and background compositing (frosted glass).",
+    "urls": {
+        "repository": "https://github.com/areadox/areadox-blur",
+        "website": "https://areadox.de",
+        "support": "https://github.com/areadox/areadox-blur/issues"
+    },
+    "has_banner": false,
+    "has_icon": false
+}

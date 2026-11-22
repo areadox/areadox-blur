@@ -1,0 +1,9 @@
+[package]
+name = "areadox-blur-core"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-2.0-or-later"
+description = "OBS-unabhängige Logik des Areadox-Blur-Filters"
+publish = false
+
+[dependencies]

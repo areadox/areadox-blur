@@ -1,0 +1,192 @@
+// Areadox Blur – masks, background compositing and final output.
+// `image` is the sharp/original texture, `blurred` the blurred one
+// (or the background for the composite techniques). Premultiplied alpha.
+
+uniform float4x4 ViewProj;
+uniform texture2d image;
+uniform texture2d blurred;
+uniform texture2d mask_image;
+
+uniform float2 uv_size;
+
+// geometric masks (all in pixels)
+uniform float2 rect_center;
+uniform float2 rect_half;
+uniform float  rect_angle;   // radians
+uniform float  corner;
+uniform float2 circle_center;
+uniform float  circle_radius;
+uniform float  feather;
+uniform float  invert;       // 0 or 1
+
+// texture masks
+uniform float4 channel_weights;
+uniform float  use_luminance;
+uniform float  multiplier;
+
+// tilt shift
+uniform float2 tilt_center;
+uniform float2 tilt_normal;
+uniform float  tilt_half;
+uniform float  tilt_feather;
+
+// frosted glass
+uniform float  glass_edge;
+
+sampler_state linearClamp {
+	Filter   = Linear;
+	AddressU = Clamp;
+	AddressV = Clamp;
+};
+
+struct VertData {
+	float4 pos : POSITION;
+	float2 uv  : TEXCOORD0;
+};
+
+VertData VSDefault(VertData v_in)
+{
+	VertData v_out;
+	v_out.pos = mul(float4(v_in.pos.xyz, 1.0), ViewProj);
+	v_out.uv = v_in.uv;
+	return v_out;
+}
+
+float4 mix_by(float2 uv, float m)
+{
+	float4 a = image.Sample(linearClamp, uv);
+	float4 b = blurred.Sample(linearClamp, uv);
+	m = saturate(m);
+	m = lerp(m, 1.0 - m, invert);
+	return lerp(a, b, m);
+}
+
+// signed distance to a rounded box (negative inside)
+float sd_round_box(float2 p, float2 b, float r)
+{
+	float2 q = abs(p) - b + r;
+	return length(max(q, float2(0.0, 0.0))) + min(max(q.x, q.y), 0.0) - r;
+}
+
+float edge(float d)
+{
+	return saturate(0.5 - d / max(feather, 1.0));
+}
+
+float4 PSRect(VertData v_in) : TARGET
+{
+	float2 d = v_in.uv * uv_size - rect_center;
+	float c = cos(rect_angle);
+	float s = sin(rect_angle);
+	float2 p = float2(c * d.x + s * d.y, -s * d.x + c * d.y);
+	return mix_by(v_in.uv, edge(sd_round_box(p, rect_half, corner)));
+}
+
+float4 PSCircle(VertData v_in) : TARGET
+{
+	float d = length(v_in.uv * uv_size - circle_center) - circle_radius;
+	return mix_by(v_in.uv, edge(d));
+}
+
+float4 PSTexture(VertData v_in) : TARGET
+{
+	float4 c = mask_image.Sample(linearClamp, v_in.uv);
+	float val = (use_luminance > 0.5) ? dot(c.rgb, float3(0.2126, 0.7152, 0.0722)) : dot(c, channel_weights);
+	return mix_by(v_in.uv, val * multiplier);
+}
+
+float4 PSTilt(VertData v_in) : TARGET
+{
+	float dist = abs(dot(v_in.uv * uv_size - tilt_center, tilt_normal));
+	float m = smoothstep(tilt_half, tilt_half + max(tilt_feather, 0.0001), dist);
+	return mix_by(v_in.uv, m);
+}
+
+// source over background
+float4 PSComposite(VertData v_in) : TARGET
+{
+	float4 s = image.Sample(linearClamp, v_in.uv);
+	float4 b = blurred.Sample(linearClamp, v_in.uv);
+	return s + b * (1.0 - s.a);
+}
+
+// sharp source over the (blurred) background, only where the source has alpha
+float4 PSGlass(VertData v_in) : TARGET
+{
+	float4 s = image.Sample(linearClamp, v_in.uv);
+	float4 b = blurred.Sample(linearClamp, v_in.uv);
+	float coverage = saturate(s.a / max(glass_edge, 0.0001));
+	return s + b * ((1.0 - s.a) * coverage);
+}
+
+// premultiplied -> straight alpha for drawing into the scene
+float4 PSOutput(VertData v_in) : TARGET
+{
+	float4 c = image.Sample(linearClamp, v_in.uv);
+	if (c.a < 0.0001)
+		return float4(0.0, 0.0, 0.0, 0.0);
+	return float4(c.rgb / c.a, c.a);
+}
+
+technique Rect
+{
+	pass
+	{
+		vertex_shader = VSDefault(v_in);
+		pixel_shader  = PSRect(v_in);
+	}
+}
+
+technique Circle
+{
+	pass
+	{
+		vertex_shader = VSDefault(v_in);
+		pixel_shader  = PSCircle(v_in);
+	}
+}
+
+technique Texture
+{
+	pass
+	{
+		vertex_shader = VSDefault(v_in);
+		pixel_shader  = PSTexture(v_in);
+	}
+}
+
+technique Tilt
+{
+	pass
+	{
+		vertex_shader = VSDefault(v_in);
+		pixel_shader  = PSTilt(v_in);
+	}
+}
+
+technique Composite
+{
+	pass
+	{
+		vertex_shader = VSDefault(v_in);
+		pixel_shader  = PSComposite(v_in);
+	}
+}
+
+technique Glass
+{
+	pass
+	{
+		vertex_shader = VSDefault(v_in);
+		pixel_shader  = PSGlass(v_in);
+	}
+}
+
+technique Output
+{
+	pass
+	{
+		vertex_shader = VSDefault(v_in);
+		pixel_shader  = PSOutput(v_in);
+	}
+}

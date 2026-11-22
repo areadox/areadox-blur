@@ -1,0 +1,241 @@
+// Areadox Blur – blur kernels.
+// All textures hold premultiplied alpha and are sampled in linear light.
+
+uniform float4x4 ViewProj;
+uniform texture2d image;
+
+uniform float2 uv_size;      // size of `image` in pixels
+uniform float2 texel_step;   // uv offset of one pixel along the blur direction
+uniform float  radius;       // kernel radius in pixels
+uniform int    kernel_type;  // 0 = gaussian, 1 = box
+uniform float2 center;       // zoom center (0..1)
+uniform float  inactive;     // zoom: fraction of the distance that stays sharp
+uniform float  pixel_size;   // pixelate cell size in pixels
+uniform float2 half_texel;   // dual kawase sample offset (uv)
+
+sampler_state linearClamp {
+	Filter   = Linear;
+	AddressU = Clamp;
+	AddressV = Clamp;
+};
+
+struct VertData {
+	float4 pos : POSITION;
+	float2 uv  : TEXCOORD0;
+};
+
+VertData VSDefault(VertData v_in)
+{
+	VertData v_out;
+	v_out.pos = mul(float4(v_in.pos.xyz, 1.0), ViewProj);
+	v_out.uv = v_in.uv;
+	return v_out;
+}
+
+float4 tap(float2 uv)
+{
+	return image.SampleLevel(linearClamp, uv, 0.0);
+}
+
+// Weight of a sample `x` pixels away from the center for a kernel of radius `r`.
+float kernel_weight(float x, float r)
+{
+	if (kernel_type == 1) {
+		// box with an anti-aliased (fractional) edge
+		return saturate(r + 0.5 - x);
+	}
+	float sigma = max(r, 0.001) / 3.0;
+	return exp(-(x * x) / (2.0 * sigma * sigma));
+}
+
+// Separable 1D blur along texel_step. Uses the bilinear trick: two neighbouring
+// taps are merged into one sample placed at their weighted center.
+float4 PSBlur1D(VertData v_in) : TARGET
+{
+	float4 sum = tap(v_in.uv);
+	float wsum = 1.0;
+	int n = int(ceil(radius + 0.5));
+	for (int i = 1; i <= n; i += 2) {
+		float o1 = float(i);
+		float o2 = o1 + 1.0;
+		float w1 = kernel_weight(o1, radius);
+		float w2 = kernel_weight(o2, radius);
+		float w = w1 + w2;
+		if (w > 0.00001) {
+			float o = (o1 * w1 + o2 * w2) / w;
+			sum += (tap(v_in.uv + texel_step * o) + tap(v_in.uv - texel_step * o)) * w;
+			wsum += 2.0 * w;
+		}
+	}
+	return sum / wsum;
+}
+
+// Radial (zoom) blur: samples along the line through `center`.
+float4 PSZoom(VertData v_in) : TARGET
+{
+	float2 px = v_in.uv * uv_size;
+	float2 c = center * uv_size;
+	float2 d = px - c;
+	float dist = length(d);
+	float2 far_corner = max(c, uv_size - c);
+	float maxd = max(length(far_corner), 1.0);
+	float t = saturate((dist / maxd - inactive) / max(1.0 - inactive, 0.0001));
+	float len = radius * t;
+
+	float4 sum = tap(v_in.uv);
+	if (len < 0.5 || dist < 0.0001)
+		return sum;
+
+	float2 dir = (d / dist) / uv_size;
+	int n = int(min(ceil(len), 64.0));
+	float step_len = len / float(n);
+	float wsum = 1.0;
+	for (int i = 1; i <= 64; i++) {
+		if (i > n)
+			break;
+		float o = step_len * float(i);
+		float w = kernel_weight(o, len);
+		sum += (tap(v_in.uv + dir * o) + tap(v_in.uv - dir * o)) * w;
+		wsum += 2.0 * w;
+	}
+	return sum / wsum;
+}
+
+// Square pixelation: averages a 4x4 grid of samples inside each cell.
+float4 PSPixelSquare(VertData v_in) : TARGET
+{
+	float s = max(pixel_size, 1.0);
+	float2 px = v_in.uv * uv_size;
+	float2 cell = floor(px / s) * s;
+	float4 sum = float4(0.0, 0.0, 0.0, 0.0);
+	for (int y = 0; y < 4; y++) {
+		for (int x = 0; x < 4; x++) {
+			float2 p = cell + (float2(float(x), float(y)) + 0.5) * (s * 0.25);
+			p = clamp(p, float2(0.5, 0.5), uv_size - 0.5);
+			sum += tap(p / uv_size);
+		}
+	}
+	return sum / 16.0;
+}
+
+// Hexagonal pixelation (pointy-top hex grid).
+float2 hex_mod(float2 p, float2 m)
+{
+	return p - m * floor(p / m);
+}
+
+float4 PSPixelHex(VertData v_in) : TARGET
+{
+	float s = max(pixel_size, 2.0);
+	float2 px = v_in.uv * uv_size;
+	float2 r = float2(1.0, 1.7320508) * s;
+	float2 h = r * 0.5;
+	float2 a = hex_mod(px, r) - h;
+	float2 b = hex_mod(px - h, r) - h;
+	float2 g = (dot(a, a) < dot(b, b)) ? a : b;
+	float2 c = px - g;
+
+	float k = s * 0.3;
+	float4 sum = tap(clamp(c, float2(0.5, 0.5), uv_size - 0.5) / uv_size);
+	for (int i = 0; i < 6; i++) {
+		float ang = float(i) * 1.0471976;
+		float2 p = c + float2(cos(ang), sin(ang)) * k;
+		sum += tap(clamp(p, float2(0.5, 0.5), uv_size - 0.5) / uv_size);
+	}
+	return sum / 7.0;
+}
+
+// Dual Kawase (Bjørge, "Bandwidth-Efficient Rendering", SIGGRAPH 2015).
+float4 PSKawaseDown(VertData v_in) : TARGET
+{
+	float2 o = half_texel;
+	float4 sum = tap(v_in.uv) * 4.0;
+	sum += tap(v_in.uv - o);
+	sum += tap(v_in.uv + o);
+	sum += tap(v_in.uv + float2(o.x, -o.y));
+	sum += tap(v_in.uv - float2(o.x, -o.y));
+	return sum * 0.125;
+}
+
+float4 PSKawaseUp(VertData v_in) : TARGET
+{
+	float2 o = half_texel;
+	float4 sum = tap(v_in.uv + float2(-o.x * 2.0, 0.0));
+	sum += tap(v_in.uv + float2(-o.x, o.y)) * 2.0;
+	sum += tap(v_in.uv + float2(0.0, o.y * 2.0));
+	sum += tap(v_in.uv + float2(o.x, o.y)) * 2.0;
+	sum += tap(v_in.uv + float2(o.x * 2.0, 0.0));
+	sum += tap(v_in.uv + float2(o.x, -o.y)) * 2.0;
+	sum += tap(v_in.uv + float2(0.0, -o.y * 2.0));
+	sum += tap(v_in.uv + float2(-o.x, -o.y)) * 2.0;
+	return sum / 12.0;
+}
+
+// Bilinear copy – drawing into a half-size target averages 2x2 texels.
+float4 PSCopy(VertData v_in) : TARGET
+{
+	return tap(v_in.uv);
+}
+
+technique Blur1D
+{
+	pass
+	{
+		vertex_shader = VSDefault(v_in);
+		pixel_shader  = PSBlur1D(v_in);
+	}
+}
+
+technique Zoom
+{
+	pass
+	{
+		vertex_shader = VSDefault(v_in);
+		pixel_shader  = PSZoom(v_in);
+	}
+}
+
+technique PixelSquare
+{
+	pass
+	{
+		vertex_shader = VSDefault(v_in);
+		pixel_shader  = PSPixelSquare(v_in);
+	}
+}
+
+technique PixelHex
+{
+	pass
+	{
+		vertex_shader = VSDefault(v_in);
+		pixel_shader  = PSPixelHex(v_in);
+	}
+}
+
+technique KawaseDown
+{
+	pass
+	{
+		vertex_shader = VSDefault(v_in);
+		pixel_shader  = PSKawaseDown(v_in);
+	}
+}
+
+technique KawaseUp
+{
+	pass
+	{
+		vertex_shader = VSDefault(v_in);
+		pixel_shader  = PSKawaseUp(v_in);
+	}
+}
+
+technique Copy
+{
+	pass
+	{
+		vertex_shader = VSDefault(v_in);
+		pixel_shader  = PSCopy(v_in);
+	}
+}

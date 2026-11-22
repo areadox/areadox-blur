@@ -1,0 +1,26 @@
+[package]
+name = "areadox-blur"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "GPL-2.0-or-later"
+description = "Composite-Blur-artiger Weichzeichner-Filter für OBS Studio 33+, geschrieben in Rust"
+repository = "https://github.com/areadox/areadox-blur"
+authors = ["areadox"]
+publish = false
+
+[lib]
+name = "areadox_blur"
+crate-type = ["cdylib"]
+
+[dependencies]
+areadox-blur-core = { path = "core" }
+
+[workspace]
+members = [".", "core"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = "symbols"
